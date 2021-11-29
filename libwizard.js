@@ -55,3 +55,6 @@ $(".f-chkbox").each(function() {
     $(this).parent().prepend("<legend>" + $(this).find("label").get(0).innerHTML + "</legend>");
     $(this).find("label").first().remove();
 });
+
+// Remove all placeholders. Run this code after moving placeholders from email domain restrictions and date format requirements to their respective labels.
+$("input").add("textarea").removeAttr("placeholder");
