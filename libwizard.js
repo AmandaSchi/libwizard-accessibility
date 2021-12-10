@@ -216,7 +216,7 @@ function parseDateInput(input, length) {
     new_input = ""
     while (input.length) {
         char = input.slice(0, 1);
-        if (parseInt(char)) {
+        if (!isNaN(parseInt(char))) {
             if (new_input.length === length-1) {
                 // in other words: If (new_input + char).length ==== length
                 return new_input + input;
@@ -242,7 +242,6 @@ function parseTwoDigitInput(input, firstDigitMin, fullMin) {
 }
 function parseDay(input) {
     return parseTwoDigitInput(input, 3, 31);
-    
 }
 function parseMonth(input) {
     return parseTwoDigitInput(input, 1, 12);
