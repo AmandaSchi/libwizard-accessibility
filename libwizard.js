@@ -8,8 +8,26 @@ function fixAll() {
     });
 
     // TODO: email question
+    $(".f-email").each(function() {
+        let input = $(this).find("input");
+        let placeholder = input.attr("placeholder");
+        if (placeholder) {
+            let id = input.attr("id") + "-description";
+            input.attr("aria-describedby", id);
+            $('<div id="' + id + '">' + placeholder + '</div>').insertAfter($(this).find("label"));
+        }
+    });
 
     // TODO: date question (format, range)
+    $(".f-date").each(function() {
+        let input = $(this).find("input");
+        let placeholder = input.attr("placeholder");
+        input.attr("data-date_format", getDateFormat(placeholder));
+    })
+    $(".f-date input").on("input", function(e) {
+        let target = e.originalEvent.target;
+        target.value = getDateValue(target.value, target.getAttribute('data-date_format'));
+    });
 
     // radio question
     $(".f-radio mat-radio-button label").each(function() {
@@ -153,6 +171,87 @@ function getVariableAttribute(element) {
     for (let a of attributes) {
         if (a.startsWith("_ngcontent-")) return a;
     }
+}
+
+function getDateFormat(placeholder) {
+    switch (placeholder) {
+        case 'MM/DD/YYYY': return 0;
+        case 'MM-DD-YYYY': return 1;
+        case 'DD/MM/YYYY': return 2;
+        case 'DD-MM-YYYY': return 3;
+        case 'YYYY/MM/DD': return 4;
+        case 'YYYY-MM-DD': return 5;
+        default: return 0;
+    }
+}
+// parseInt((format/2)) returns 0, 1, or 2, which directly relates to format type
+// format%2 returns 0 or 1, which directly relates to / vs -
+function getDateValue(input, format) {
+    switch (parseInt((format/2))) {
+        case 0:
+            input = parseMonth(input);
+            if (input.length > 3) input = input.slice(0, 3) + parseDay(input.slice(3));
+            if (input.length > 6) input = input.slice(0, 6) + parseYear(input.slice(6));
+            break;
+        case 1:
+            input = parseDay(input);
+            if (input.length > 3) input = input.slice(0, 3) + parseMonth(input.slice(3));
+            if (input.length > 6) input = input.slice(0, 6) + parseYear(input.slice(6));
+            break;
+        case 2:
+            input = parseYear(input);
+            if (input.length > 5) input = input.slice(0, 5) + parseMonth(input.slice(5));
+            if (input.length > 8) input = input.slice(0, 8) + parseDay(input.slice(8));
+            break;
+    }
+    // make sure no extra characters
+    input = input.slice(0, 10);
+    // replace separator placeholder
+    if ((format % 2) === 0) input = input.replaceAll("X", "/");
+    else input = input.replaceAll("X", "-");
+    return input;
+}
+// ensures that the first [lenght] characters of input are numbers (removes other characters)
+function parseDateInput(input, length) {
+    new_input = ""
+    while (input.length) {
+        char = input.slice(0, 1);
+        if (parseInt(char)) {
+            if (new_input.length === length-1) {
+                // in other words: If (new_input + char).length ==== length
+                return new_input + input;
+            }
+            new_input += char;
+        }
+        input = input.slice(1);
+    }
+    // if valid numbers in input are fewer than length, we will reach this point and should return what we have
+    return new_input;
+}
+// second params should be 3 and 31 or 1 and 12 (day/month)
+function parseTwoDigitInput(input, firstDigitMin, fullMin) {
+    input = parseDateInput(input, 2);
+    if (!input.length) return '';
+    if (parseInt(input.slice(0, 1)) > firstDigitMin || parseInt(input.slice(0, 2)) > fullMin) {
+        return '0' + input.slice(0, 1) + 'X' + input.slice(1);
+    }
+    // otherwise if input is only length 1, return (still need one more digit)
+    else if (input.length === 1) return input;
+    // otherwise insert placeholder separator at appropriate spot and return
+    else return input.slice(0, 2) + 'X' + input.slice(2);
+}
+function parseDay(input) {
+    return parseTwoDigitInput(input, 3, 31);
+    
+}
+function parseMonth(input) {
+    return parseTwoDigitInput(input, 1, 12);
+}
+function parseYear(input) {
+    input = parseDateInput(input, 4);
+    // allowing any year - no need for extra validation
+    if (input.length > 3) return input.slice(0, 4) + 'X' + input.slice(4);
+    else return input;
 }
 
 // TODO: Move to CSS file, also include needed general CSS modifications
