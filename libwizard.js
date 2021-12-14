@@ -1,4 +1,28 @@
 function fixAll() {
+    // what needs to happen depends on which page we are on
+    // if quiz page and content has been moved out of the form, content needs to move back in
+    if ($("libwizard-question").length > 0) {
+        if ($("form").children().length === 0) {
+            $("form").append($("main").children().first());
+            $("form").removeAttr("aria-hidden");
+        }
+        fixQuiz();
+    } else if ($("form").children().length > 0) {
+        // otherwise we're not in a quiz, so nothing should be in the form
+        $("form").before($("form").children().css("width", "100%"));
+        $("form").children().remove();
+        $("form").attr("aria-hidden", "true");
+    }
+
+    // TODO: Set to reapply on buttons - not sure if this is optimal wait time, also doesn't work so well if there are errors preventing proceeding, so will need to deal with that...
+    $("button").on("click", function() {
+        setTimeout(fixAll, 100);
+    });
+}
+
+// TODO: Note to consider: I might be able to do some tests before applying a function. For example, before setting up a fieldset for a group of checkboxes, I could make sure a fieldset doesn't already exist for some reason. This could be helpful...
+
+function fixQuiz() {
     // remove aria-live attribute from questions
     $("libwizard-question div").removeAttr("aria-live");
 
@@ -7,42 +31,107 @@ function fixAll() {
         $(this).replaceWith(this.innerText);
     });
 
-    // TODO: email question
+    // TODO: Remove event listeners from inputs?
 
-    // TODO: date question (format, range)
+    // Question Types
+    // Number: Broken aria reference with aria-describedby
+    $(".f-num input").removeAttr("aria-describedby");
+    // Date: Does not use date type, date range is not indicated, date format... something
+    fixDate();
+    // Radios: Not in fieldset, parsing error, VoiceOver "and one more item"
+    $(".f-radio").each(wrapInputsInFieldset).each(fixRadioGroup);
+    $(".f-radio mat-radio-button label").each(fixRadioButton);
+    // Checkboxes: Not in fieldset, parsing error, VoiceOver "and one more item"
+    $(".f-chkbox").each(wrapInputsInFieldset);
+    $(".f-chkbox mat-checkbox label").each(fixCheckbox);
+    // Grid
+    $(".f-grid").each(fixGrid);
+    // Ranking
+    $(".f-rating").each(fixRanking);
+    // Email: Domain restrictions
+    $(".f-email").each(fixEmail);
 
-    // radio question
-    $(".f-radio mat-radio-button label").each(function() {
-        let span = createRadioButtonSpan($(this).find("input"), this.innerText);
-        $(this).children().remove();
-        $(this).append(span);
-    });
+    // TODO: Enforce anything?
 
-    // checkbox question
-    $(".f-chkbox").each(function() {
-        // group checkboxes in a fieldset, and make label a legend
-        $(this).wrap("<fieldset></fieldset>");
-        $(this).parent().prepend("<legend>" + $(this).find("label").get(0).innerHTML + "</legend>");
-        $(this).find("label").first().remove();
-    });
-    $(".f-chkbox mat-checkbox label").each(function() {
-        let span = createCheckboxSpan($(this).find("input"), $(this).find("svg"), this.innerText);
-        $(this).children().remove();
-        $(this).append(span.children());
-    });
+    // Remove placeholders
+    $("input").removeAttr("placeholder");
 
-    // grid question
-    $(".f-grid").each(function() { fixGrid(this); });
+    // TODO: Fix alerts (required, require correct answer to continue, domain restrictions, date range) (maybe)
 
-    // TODO: ranking question
-
-    // TODO: Remove placeholders
-
-    // TODO: Alerts
+    // TODO: Set to reapply certain code on size shift (I know grid changes, at least)
 
     applyTemporaryCss();
 }
 fixAll();
+
+// TODO
+function fixDate() {
+    // TODO: date question (format, range)
+    // $(".f-date").each(function() {
+    //     let input = $(this).find("input");
+    //     let placeholder = input.attr("placeholder");
+    //     input.attr("data-date_format", getDateFormat(placeholder)).attr("type", "date");
+    // });
+    // $(".f-date input").on("input", function(e) {
+    //     if (e.originalEvent.data !== null) handleDateInput(e);
+    // });
+    // for (let obj of $("input[type='date']")) {
+    //     let e = getEventListeners(obj)['blur'][0];
+    //     obj.removeEventListener('input', e.listener, e.useCapture);
+    // }
+    // $(".f-date input").on("blur", function(e) {
+    //     handleDateInput(e);
+    // });
+    // function handleDateInput(e) {
+    //     let target = e.originalEvent.target;
+    //     target.value = getDateValue(target.value, target.getAttribute('data-date_format'));
+    // }
+}
+
+/**
+ * "this" should be a checkbox or radio group to be wrapped
+ */
+function wrapInputsInFieldset() {
+    $(this).wrap("<fieldset></fieldset>");
+    $(this).parent().prepend("<legend>" + $(this).find("label").get(0).innerHTML + "</legend>");
+    $(this).find("label").first().remove();
+}
+
+function fixRadioGroup() {
+    let group = $(this).find("mat-radio-group");
+    let fieldset = $(this).parent();
+    // fieldset needs role of radio group, possibly needs required
+    fieldset.attr("role", "radiogroup");
+    if (group.attr("aria-required")) fieldset.attr("aria-required", "true").attr("required", "");
+    // remove role, aria-labelledby, and required
+    group.removeAttr("role").removeAttr("aria-labelledby").removeAttr("aria-required").removeAttr("required");
+}
+
+function fixRadioButton() {
+    let span = createRadioButtonSpan($(this).find("input"), this.innerText);
+    $(this).children().remove();
+    $(this).append(span);
+}
+
+function fixCheckbox() {
+    let span = createCheckboxSpan($(this).find("input"), $(this).find("svg"), this.innerText);
+    $(this).children().remove();
+    $(this).append(span.children());
+}
+
+function fixRanking() {
+    //
+}
+
+function fixEmail() {
+    let input = $(this).find("input");
+    let placeholder = input.attr("placeholder");
+    if (placeholder) {
+        let id = input.attr("id") + "-description";
+        input.attr("aria-describedby", id);
+        $('<div id="' + id + '">' + placeholder + '</div>').insertAfter($(this).find("label"));
+    }
+}
 
 // TODO: Reapply when content changes to do screen size or button press
 // TODO: Ensure that this works for small screens (mostly concerned about grid)
@@ -74,51 +163,113 @@ function createCheckboxSpan(input, svg, label_text) {
     return span;
 }
 
-function fixGrid(grid) {
+function fixGrid() {
+    let label = $(this).find("label").first();
+    let grid_label_text = label.get(0).innerText; // TODO: Will included required label if present?
+    let ng = getVariableAttribute(label.get(0));
+    let col_header = $(this).find(".f-grid-col").children();
+    fixGridLabel(label, ng);
+    $(this).find(".f-grid-row").each(function() {
+        let row_label_text = $(this).children().get(0).innerText;
+        let row_id = $(this).children().first().attr("id").replace("-label", "");
+        // fieldset
+        let fieldset = $('<fieldset ' + ng + ' class="row f-grid-row"></fieldset>');
+        fieldset.append('<legend class="sr-only">' + grid_label_text + ', ' + row_label_text + '</legend>')
+            .append('<div ' + ng + ' ngclass.lt-md="text-24" aria-hidden="true" class="col text-16 choice-text"><span>' + row_label_text + '</span></div>')
+            .append($(this).children(":not(:first-child)")); // move over all of the rows
+        $(this).replaceWith(fieldset);
+        // radio buttons/checkboxes - using loop because I need the index
+        let cols = $(fieldset).find("mat-checkbox");
+        for (let i = 0; i < cols.length; i++) {
+            let col = cols[i];
+            let input_label_text = col_header.get(i+1).innerText;
+            if (grid_label_text.startsWith("Choose all that apply")) {
+                // multiple answers per row - checkboxes
+                $(col).removeAttr("aria-labelledby");
+                let span = createCheckboxSpan($(col).find("input"), $(col).find("svg"), input_label_text);
+                // a few modifications
+                span.find(".mat-ripple-element").addClass("mat-checkbox-ripple");
+                span.find(".mat-checkbox-label").addClass("sr-only");
+                $(col).children("label").children().remove();
+                $(col).children("label").append(span.children());
+            } else {
+                // radio buttons
+                let checkbox_input = $(col).find("input").css("display", "none").attr("aria-hidden", "true").attr("aria-label", "ignore this input"); // keep but hide old input
+                let checkbox_id = checkbox_input.get(0).id;
+                let radio_button = $('<mat-radio-button ' + ng + ' class="mat-radio-button responsive _mat-animation-noopable mat-accent"></mat-radio-button>')
+                    .append('<label class="mat-radio-label" for="' + checkbox_id + '-radio"></label>');
+                let span = createRadioButtonSpan(
+                    $('<input type="radio" id="' + checkbox_id + '-radio" class="mat-radio-outer-circle" name="' + row_id + '" value="' + input_label_text + '" data-refersto="' + checkbox_id + '" aria-checked="false">'),
+                    input_label_text);
+                // a few modifications (and an event handler)
+                span.find(".mat-ripple-element").addClass("mat-radio-ripple");
+                span.find(".mat-radio-label-content").addClass("sr-only");
+                span.find("input").on("change", function() { handleRadioChange(this); });
+                span.append(checkbox_input);
+                radio_button.children("label").append(span);
+                $(col).replaceWith(radio_button);
+                // TODO: Adjust radio button if checkbox was already checked (on reapply)
+            }
+        }
+    });
+}
+function fixGridLabel(label, ng) {
+    // build better label: replace label element with span, remove paragraph element from within span
+    label.children().first().replaceWith("<span>" + label.children().get(0).innerText + "</span>"); // would not include required label
+    let new_label = $("<span></span>");
+    new_label.attr("class", label.attr("class")).attr(ng, "").append(label.children());
+    label.replaceWith(new_label);
+}
+
+/*function fixGrid() {
+    let grid = this;
     // set some needed variables
     let grid_label = $(grid).find("label").first();
     let grid_label_text = grid_label.get(0).innerText; // TODO: will include required label if present?
-    let grid_id = grid_label.attr("for").replace("-group", "");
+    //let grid_id = grid_label.attr("for").replace("-group", "");
     let ng = getVariableAttribute(grid_label.get(0));
     let col_header = $(grid).find(".f-grid-col").children();
-    // build better label: replace label element with span, remove paragraph element from within span
-    grid_label.children().first().replaceWith("<span>" + grid_label.children().get(0).innerText + "</span>"); // would not include required label
-    let new_label = $("<span></span>");
-    new_label.attr("class", grid_label.attr("class")).attr(ng, "").append(grid_label.children());
-    grid_label.replaceWith(new_label);
     
     let is_radio = !grid_label_text.startsWith("Choose all that apply");
     $(grid).find(".f-grid-row").each(function() {
         let row_label_text = $(this).children().get(0).innerText;
         let row_id = $(this).children().first().attr("id").replace("-label", "");
-        if (is_radio) {
-            // make a radiogroup
-            $(this).attr("aria-labelledby", row_id + "-label").attr("role", "radiogroup");
-            $(this).children().get(0).innerText = '';
-            $(this).children().first().append(
-                $('<label id="' + row_id + '-label"></label>')
-                    .append('<span class="sr-only">' + grid_label_text + ', </span>')
-                    .append('<span>' + row_label_text + '</span>')
-            );
-        } else {
-            // make a checkbox fieldset
-            let fieldset = $('<fieldset ' + ng + ' class="row f-grid-row"></fieldset>');
-            fieldset.append('<legend class="sr-only">' + grid_label_text + ', ' + row_label_text + '</legend>')
-                .append('<div ' + ng + ' ngclass.lt-md="text-24" aria-hidden="true" class="col text-16 choice-text"><span>' + row_label_text + '</span></div>')
-                .append($(this).children(":not(:first-child)")); // move over all of the rows
-            $(this).replaceWith(fieldset);
-        }
+        // fieldset
+        let fieldset = $('<fieldset ' + ng + ' class="row f-grid-row"></fieldset>');
+        fieldset.append('<legend class="sr-only">' + grid_label_text + ', ' + row_label_text + '</legend>')
+            .append('<div ' + ng + ' ngclass.lt-md="text-24" aria-hidden="true" class="col text-16 choice-text"><span>' + row_label_text + '</span></div>')
+            .append($(this).children(":not(:first-child)")); // move over all of the rows
+        $(this).replaceWith(fieldset);
+        if (is_radio) fieldset.attr("role", "radiogroup");
+        // if (is_radio) {
+        //     // make a radiogroup
+        //     $(this).attr("aria-labelledby", row_id + "-label").attr("role", "radiogroup");
+        //     $(this).children().get(0).innerText = '';
+        //     $(this).children().first().append(
+        //         $('<label id="' + row_id + '-label"></label>')
+        //             .append('<span class="sr-only">' + grid_label_text + ', </span>')
+        //             .append('<span>' + row_label_text + '</span>')
+        //     );
+        // } else {
+        //     // make a checkbox fieldset
+        //     let fieldset = $('<fieldset ' + ng + ' class="row f-grid-row"></fieldset>');
+        //     fieldset.append('<legend class="sr-only">' + grid_label_text + ', ' + row_label_text + '</legend>')
+        //         .append('<div ' + ng + ' ngclass.lt-md="text-24" aria-hidden="true" class="col text-16 choice-text"><span>' + row_label_text + '</span></div>')
+        //         .append($(this).children(":not(:first-child)")); // move over all of the rows
+        //     $(this).replaceWith(fieldset);
+        // }
         // inputs (using loop because I need the index)
-        let inputs = $(this).find("mat-checkbox");
+        let inputs = $(fieldset).find("mat-checkbox");
         for (let i = 0; i < inputs.length; i++) {
             let input = inputs[i];
             let input_label_text = col_header.get(i+1).innerText;
             if (is_radio) {
-                let checkbox_input = $(input).find("input").css("display", "none"); // keep but hide old input
+                let checkbox_input = $(input).find("input").css("display", "none").attr("aria-hidden", "true").attr("aria-label", "ignore this input"); // keep but hide old input
+                let checkbox_id = checkbox_input.get(0).id;
                 let radio_button = $('<mat-radio-button ' + ng + ' class="mat-radio-button responsive _mat-animation-noopable mat-accent"></mat-radio-button>')
-                    .append('<label class="mat-radio-label"></label>');
+                    .append('<label class="mat-radio-label" for="' + checkbox_id + '-radio"></label>');
                 let span = createRadioButtonSpan(
-                    $('<input type="radio" class="mat-radio-outer-circle" name="' + row_id + '" value="' + input_label_text + '" data-refersto="' + checkbox_input.get(0).id + '" aria-checked="false">'),
+                    $('<input type="radio" id="' + checkbox_id + '-radio" class="mat-radio-outer-circle" name="' + row_id + '" value="' + input_label_text + '" data-refersto="' + checkbox_id + '" aria-checked="false">'),
                     input_label_text);
                 // a few modifications (and an event handler)
                 span.find(".mat-ripple-element").addClass("mat-radio-ripple");
@@ -134,12 +285,12 @@ function fixGrid(grid) {
                 // a few modifications
                 span.find(".mat-ripple-element").addClass("mat-checkbox-ripple");
                 span.find(".mat-checkbox-label").addClass("sr-only");
-                $(input).children().remove();
-                $(input).append(span.children());
+                $(input).children("label").children().remove();
+                $(input).children("label").append(span.children());
             }
         }
     });
-}
+}*/
 
 function handleRadioChange(radio) {
     let parent = $(radio).parents(".f-grid-row");
@@ -154,6 +305,7 @@ function getVariableAttribute(element) {
         if (a.startsWith("_ngcontent-")) return a;
     }
 }
+
 
 // TODO: Move to CSS file, also include needed general CSS modifications
 function applyTemporaryCss() {
