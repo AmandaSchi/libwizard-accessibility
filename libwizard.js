@@ -1,4 +1,21 @@
 function fixAll() {
+
+    // TODO: Set to reapply on buttons - not sure if this is optimal wait time, also doesn't work so well if there are errors preventing proceeding, so will need to deal with that... basically need to be more specific about which buttons...
+    $('button').each(function() {
+        if (!$(this).hasClass('browse')) $(this).on('click', function() { setTimeout(fixAll, 100); });
+    });
+
+    // clear out form-top if it exists, otherwise put the h1 into it
+    let top = $('.form-top');
+    if (top.length > 0) {
+        top.children('libwizard-question').remove();
+        top.children('div').remove();
+    } else {
+        top = $('<div class="form-top"></div>');
+        $('form').before(top);
+        top.append($('h1'));
+    }
+
     // what needs to happen depends on which page we are on
     // if quiz page and content has been moved out of the form, content needs to move back in
     if ($("libwizard-question").length > 0) {
@@ -14,10 +31,6 @@ function fixAll() {
         $("form").attr("aria-hidden", "true");
     }
 
-    // TODO: Set to reapply on buttons - not sure if this is optimal wait time, also doesn't work so well if there are errors preventing proceeding, so will need to deal with that... basically need to be more specific about which buttons...
-    $('button').each(function() {
-        if (!$(this).hasClass('browse')) $(this).on('click', function() { setTimeout(fixAll, 100); });
-    });
     // $("button").on("click", function() {
     //     setTimeout(fixAll, 100);
     // });
@@ -38,13 +51,8 @@ function fixQuiz() {
     });
 
     // Pull title and possibly text block out of form element
-    let text = $('<div class="form-top"></div>');
-    $('form').before(text);
-    text.append($('h1'));
     let q1 = $('libwizard-question').first();
-    if (q1.find('.f-text-block').length > 0) text.append(q1);
-
-    // TODO: Remove event listeners from inputs?
+    if (q1.find('.f-text-block').length > 0) $('.form-top').append(q1);
 
     // Question Types
     $(".f-input").each(fixTextInput);
@@ -67,6 +75,7 @@ function fixQuiz() {
     $("input").removeAttr("placeholder");
 
     // TODO: Fix alerts (required, require correct answer to continue, domain restrictions, date range) (maybe)
+    $(".btn-submit").add(".btn-next").each(fixSubmit);
 
     // TODO: Set to reapply certain code on size shift (I know grid changes, at least)
 
@@ -88,6 +97,8 @@ function fixTextInput() {
         // add event handler
         new_input.on('focusout', function() { validateRequired(this); });
     }
+
+    q.parents('libwizard-question').attr('data-type', 'input');
 }
 function fixTextarea() {
     let old_input = $(this).find('textarea').first();
@@ -100,6 +111,8 @@ function fixTextarea() {
         // add event handler
         new_input.on('focusout', function() { validateRequired(this); });
     }
+
+    $(this).parents('libwizard-question').attr('data-type', 'textarea');
 }
 // replacing input element and remove broken aria reference with aria-describedby
 function fixNumberInput() {
@@ -115,6 +128,8 @@ function fixNumberInput() {
         // add event handler
         new_input.on('focusout', function() { validateRequired(this); });
     }
+
+    $(this).parents('libwizard-question').attr('data-type', 'input');
 }
 // replace input element, add date format description, add simple input mask
 function fixDate() {
@@ -146,6 +161,8 @@ function fixDate() {
     //         }
     //     })
     // });
+
+    $(this).parents('libwizard-question').attr('data-type', 'input');
 }
 // just replacing input element for now
 function fixSelect() {
@@ -161,6 +178,8 @@ function fixSelect() {
         // add event handler
         new_input.on('focusout', function() { validateRequired(this); });
     }
+
+    select.parents('libwizard-question').attr('data-type', 'select');
 }
 // fieldset, parsing error, VoiceOver 'and one more item'
 function fixRadioGroup() {
@@ -179,9 +198,10 @@ function fixRadioGroup() {
         // remove special input
         $(this).children('.flex-grow').find('input').remove();
         // add listener
-        fieldset.on('focusout', function() { validateRequiredRadio(this); });
+        fieldset.on('focusout', function(e) { validateRequiredGroup(this, true, e); });
         // add field for alert
-        fieldset.append('<div class="invalid-feedback" role="alert" style="display: block;"></div>');
+        let alert = $('<div class="invalid-feedback" role="alert" style="display: block;"></div>');
+        alert.insertAfter(fieldset.children('legend'));
     }
 
     // fix inputs
@@ -191,6 +211,8 @@ function fixRadioGroup() {
         $(this).append(span);
         $(this).find('input').on('input', function() { handleRadiogroupChange(this); });
     });
+
+    $(this).parents('libwizard-question').attr('data-type', 'group');
 }
 // replace group, fieldset, parsing error, VoiceOver 'and one more item'
 function fixCheckboxGroup() {
@@ -204,9 +226,10 @@ function fixCheckboxGroup() {
         // add required to fieldset
         fieldset.attr('aria-required', 'true').attr('required', '');
         // add listener
-        fieldset.on('focusout', function() { validateRequiredCheckbox(this); });
+        fieldset.on('focusout', function(e) { validateRequiredGroup(this, false, e); });
         // add field for alert
-        fieldset.append('<div class="invalid-feedback" role="alert" style="display: block;"></div>');
+        let alert = $('<div class="invalid-feedback" role="alert" style="display: block;"></div>');
+        alert.insertAfter(fieldset.children('legend'));
     }
 
     // fix inputs
@@ -215,8 +238,164 @@ function fixCheckboxGroup() {
         $(this).children().remove();
         $(this).append(span.children());
     });
+
+    $(this).parents('libwizard-question').attr('data-type', 'group');
 }
-// TODO: Move fixGrid and fixRanking - they (esp. grid) may have additional changes to make for dealing with required...
+// TODO: Remove the comma in the hidden legend? Looks weird for error handling...
+// grid - multiple functions so it's easier to understand
+function fixGrid() {
+    let label = $(this).find("label").first();
+    let grid_label_text = label.children().get(0).innerText; // avoid including required label
+    let req = $(this).find('input[aria-required=true]').first();
+    let ng = getVariableAttribute(label.get(0));
+    let col_header = $(this).find(".f-grid-col").children();
+    let is_radio = !grid_label_text.startsWith("Choose all that apply");
+    fixGridLabel(label, ng);
+    // wrap each question/row in a fieldset
+    if (col_header.length === 0) {
+        // have to do low width completely differently, apparently
+        addFieldsetsToMobileGrid(
+            $(this).find(".f-grid-col").length,
+            $(this).children("div").children("div").first(), // should only be one, but just in case
+            grid_label_text, req);
+        $(this).find("fieldset").each(function() {
+            let row_id = $(this).find(".f-grid-row").children().first().attr("id").split(" ")[0].replace("-label", "");
+            // inputs
+            $(this).find(".f-grid-row").each(function() {
+                // TODO: Trying removing double id first
+                $(this).children().first().removeAttr("id");
+                let label_text = $(this).children().get(0).innerText;
+                let checkbox = $(this).find("mat-checkbox").get(0);
+                if (is_radio) modifyGridRadioBtn(checkbox, label_text, ng, row_id);
+                else modifyGridCheckbox(checkbox, label_text);
+            });
+        });
+    } else {
+        $(this).find(".f-grid-row").each(function() {
+            let row_id = $(this).children().first().attr("id").replace("-label", "");
+            addFieldsetsToNonMobileGrid(this, grid_label_text, req);
+            // individual checkboxes and radio buttons
+            $(this).find("mat-checkbox").each(function(index) {
+                let col_label_text = col_header.get(index+1).innerText;
+                if (is_radio) modifyGridRadioBtn(this, col_label_text, ng, row_id);
+                else modifyGridCheckbox(this, col_label_text);
+            });
+        });
+    }
+    // give fieldsets appropriate role
+    if (is_radio) $(this).find("fieldset").attr("role", "radiogroup");
+
+    if (req.length) {
+        // remove special input
+        req.remove();
+        let fieldsets = $(this).find('fieldset');
+        // give each fieldset required attributes
+        fieldsets.attr('aria-required', 'true').attr('required', '');
+        // give each fieldset areas for alerts
+        let alert = $('<div class="invalid-feedback" role="alert" style="display: block;"></div>');
+        alert.insertAfter(fieldsets.children('legend'));
+        // give each fieldset a listener
+        fieldsets.on('focusout', function(e) { validateRequiredGroup(this, is_radio, e); });
+    }
+
+    $(this).parents('libwizard-question').attr('data-type', 'grid');
+}
+function fixGridLabel(label, ng) {
+    // build better label: replace label element with span, remove paragraph element from within span
+    label.children().first().replaceWith("<span>" + label.children().get(0).innerText + "</span>"); // would not include required label
+    let new_label = $("<span></span>");
+    new_label.attr("class", label.attr("class")).attr(ng, "").append(label.children());
+    label.replaceWith(new_label);
+}
+function addFieldsetsToMobileGrid(number, container, grid_label_text, req) {
+    for (let i = 0; i < number; i++) {
+        let label_row = container.children("div").first();
+        let fieldset = $('<fieldset data-type="group"></fieldset>');
+        let legend_text = '<span>' + grid_label_text + ', ' + label_row.get(0).innerText + '</span>';
+        if (req) legend_text += '<span>, (required)</span>';
+        fieldset.append('<legend class="sr-only">' + legend_text + '</legend>');
+        fieldset.append(label_row.attr("aria-hidden", "true"));
+        // now for each of the rows
+        while (true) {
+            let row = container.children("div").first();
+            // if there is nothing in row then we are completely finished - that was the last question
+            // if the row has no children than it is the start of the next question, so we are finished with this one
+            if (row.length === 0 || row.children().length === 0) break;
+            // this is just the reorganization - other stuff can come later
+            fieldset.append(row);
+        }
+        container.append(fieldset);
+    }
+}
+function addFieldsetsToNonMobileGrid(row, grid_label_text, req) {
+    // wrap with fieldset
+    $(row).wrap('<fieldset data-type="group"></fieldset>');
+    // add row id
+    $(row).parent().attr("data-row_id", $(row).children().first().attr("id").replace("-label", ""));
+    // hide "label" from AT
+    $(row).children().first().attr("aria-hidden", "true");
+    // add visually hidden legend
+    let legend_text = '<span>' + grid_label_text + ', ' + $(row).children().get(0).innerText + '</span>';
+    if (req) legend_text += '<span>, (required)</span>';
+    $(row).parent().prepend('<legend class="sr-only">' + legend_text + '</legend>');
+}
+function modifyGridCheckbox(checkbox, label_text) {
+    $(checkbox).removeAttr("aria-labelledby");
+    let span = createCheckboxSpan($(checkbox).find("input"), $(checkbox).find("svg"), label_text);
+    // a few modifications
+    span.find(".mat-ripple-element").addClass("mat-checkbox-ripple");
+    span.find(".mat-checkbox-label").addClass("sr-only");
+    $(checkbox).children("label").children().remove();
+    $(checkbox).children("label").append(span.children());
+}
+function modifyGridRadioBtn(checkbox, label_text, ng, row_id) {
+    let old_input = $(checkbox).find("input").css("display", "none").attr("aria-hidden", "true").attr("aria-label", "ignore this field"); // keep (but hide) old checkbox input
+    let checkbox_id = old_input.get(0).id;
+    let radio_button = $('<mat-radio-button ' + ng + ' class="mat-radio-button responsive _mat-animation-noopable mat-accent"></mat-radio-button>')
+        .append('<label class="mat-radio-label" for="' + checkbox_id + '-radio"></label>');
+    let span = createRadioButtonSpan(
+        $('<input type="radio" id="' + checkbox_id + '-radio" class="mat-radio-outer-circle" name="' + row_id + '" value="' + label_text + '" data-refersto="' + checkbox_id + '" aria-checked="false">'),
+        label_text);
+    // a few modifications (and an event handler)
+    span.find(".mat-ripple-element").addClass("mat-radio-ripple");
+    span.find(".mat-radio-label-content").addClass("sr-only");
+    span.find("input").on("change", function() { handleRadioChange(this); });
+    span.append(old_input);
+    radio_button.children("label").append(span);
+    $(checkbox).replaceWith(radio_button);
+    // TODO: Adjust radio button if checkbox was already checked (on reapply)
+}
+// ranking
+function fixRanking() {
+    if ($(this).find("select").length === 0) return; // because ranking uses f-rating, so need to differentiate
+    let fieldset = wrapWithFieldset($(this), $(this).find('label').first());
+    //wrapInputsInFieldset(this);
+    $(this).find("div").removeAttr("tabindex").removeAttr("aria-label");
+    $(this).find("select").each(function() {
+        let id = this.id;
+        $(this).removeAttr("aria-label");
+        $(this).next().wrap("<label for='" + id + "'></label>");
+        $(this).next().prepend("<span class='sr-only'>Rank of </span>");
+        // at least in safari it does a weird thing where it selects 1 for each of them...
+        this.value = '';
+    });
+
+    // handle required
+    let req = $(this).find('input'); // shouldn't normally be any inputs
+    if (req.length) {
+        // remove special input
+        req.remove();
+        // give fieldset required attributes
+        fieldset.attr('aria-required', 'true').attr('required', '');
+        // give fieldset an area for alerts
+        let alert = $('<div class="invalid-feedback" role="alert" style="display: block;"></div>');
+        alert.insertAfter(fieldset.children('legend'));
+        // give fieldset a listener
+        fieldset.on('focusout', function(e) { validateRequiredRanking(this, e); });
+    }
+
+    $(this).parents('libwizard-question').attr('data-type', 'ranking');
+}
 // replace input, domain restrictions
 function fixEmail() {
     let old_input = $(this).find('input');
@@ -227,6 +406,8 @@ function fixEmail() {
 
     if(new_input.get(0).required) new_input.on('focusout', function() { validateRequired(this); });
     new_input.on('focusout', function() { validateEmail(this); });
+
+    $(this).parents('libwizard-question').attr('data-type', 'input');
 }
 // replace input
 function fixName() {
@@ -241,6 +422,23 @@ function fixName() {
         // add event handler
         new_input.on('focusout', function() { validateRequired(this); });
     }
+
+    q.parents('libwizard-question').attr('data-type', 'input');
+}
+
+// hide original button so that a different event can be attached
+function fixSubmit() {
+    let button = $(this);
+    // make a copy
+    let new_btn = $(button.get(0).cloneNode(true));
+    // add id to the old button and reference to the new one
+    button.attr('id', 'submit-btn-id');
+    new_btn.attr('data-refersto', 'submit-btn-id');
+    // insert the new button and hide the old one
+    new_btn.insertBefore(button);
+    button.attr('aria-hidden', 'true').css('display', 'none');
+    // give the new button the appropriate event
+    new_btn.on('click', function() { handleSubmit(this); });
 }
 
 /* -------------------- Helper functions -------------------- */
@@ -333,6 +531,53 @@ function handleFieldsetAlert(fieldset, text, valid) {
     if (!valid && !alert.text().includes(text)) alert.text(text);
     else if (valid && alert.text().includes(text)) alert.text('');
 }
+function checkForError(question) {
+    question = $(question);
+    let alert = question.find('.invalid-feedback');
+    let label = 'label';
+    let q_type = 'input';
+    let error = '';
+    // replace alert role with none temporarily so we don't spam alerts
+    alert.attr('role', 'none');
+    switch(question.attr('data-type')) {
+        case 'input':
+            break;
+        case 'textarea':
+            q_type = 'textarea';
+            break;
+        case 'select':
+            q_type = 'select';
+            break;
+        case 'group':
+            label = 'legend';
+            break;
+        case 'ranking':
+            label = 'legend';
+            q_type = 'select';
+            break;
+        default:
+            return '';
+    }
+    // grab the label - first shouldn't be necessary but adding that just in case
+    label = question.find(label).first();
+    // trigger focusout event for error detection
+    question.find(q_type).trigger('focusout');
+    // make sure there isn't already an "Error" at the start of the label
+    label.children('.error-label').remove();
+    // check for error
+    if (alert.text()) {
+        let name = label.children().first().text().replace('\n', ''); // remove required label if it is there
+        // indicate problem
+        if (alert.text().includes('required')) error = alert.text().replace('This question', name);
+        else error = name + ' is invalid. ' + alert.text();
+        // modify label/legend
+        label.prepend('<span class="error-label">Error: </span>');
+        // TODO: Modify legend properly for grid questions (currently only modifying the hidden legend)
+    }
+    // return to role of alert
+    alert.attr('role', 'alert');
+    return error;
+}
 
 /* -------------------- Event handlers -------------------- */
 
@@ -373,25 +618,25 @@ function validateRequired(input) {
     let text = 'This question is required. Please enter a value.';
     handleAlert(input, text, input.value);
 }
-function validateRequiredRadio(fieldset) {
-    // using set timeout because otherwise the whole body element is said to be the active element...
-    setTimeout(function() {
-        // if focus has not left, don't need to validate yet
-        if (fieldset.contains(document.activeElement)) return;
-        // TODO: Is it fine to not have the alert attached, since I don't think aria-describedby applies to fieldsets?
-        let text = 'This question is required. Please select an option.';
-        handleFieldsetAlert(fieldset, text, fieldset.getAttribute('value'));
-    }, 50);
+function validateRequiredGroup(fieldset, radio, event) {
+    if (event && event.originalEvent && fieldset.contains(event.originalEvent.relatedTarget)) {
+        // focus has not left the fieldset, so don't need to validate yet
+        // TODO: Do remove the alert if the question previously had an error that has now been fixed
+        return;
+    }
+    // TODO: Is it fine to not have the alert attached, since I don't think aria-describedby applies to fieldsets?
+    let text = 'This question is required.';
+    if (radio) text += ' Please select an option.';
+    else text += ' Please select at least one option.';
+    handleFieldsetAlert(fieldset, text, $(fieldset).find('input[aria-checked=true]').length);
 }
-function validateRequiredCheckbox(fieldset) {
-    // using set timeout because otherwise the whole body element is said to be the active element...
-    setTimeout(function() {
-        // if focus has not left, don't need to validate yet
-        if (fieldset.contains(document.activeElement)) return;
-        // TODO: Is it fine to not have the alert attached, since I don't think aria-describedby applies to fieldsets?
-        let text = 'This question is required. Please select at least one option.';
-        handleFieldsetAlert(fieldset, text, $(fieldset).find('input[aria-checked=true]').length);
-    }, 50);
+function validateRequiredRanking(fieldset, event) {
+    if (event && event.originalEvent && fieldset.contains(event.originalEvent.relatedTarget)) {
+        // TODO: Remove alert that has been fixed
+        return;
+    }
+    let text = 'This question is required. Please rank the options.';
+    handleFieldsetAlert(fieldset, text, $(fieldset).find('select').get(0).value);
 }
 function validateDate(input) {
     // moment.js is apparently included, this is good
@@ -408,175 +653,45 @@ function validateEmail(input) {
     }
 }
 
-
-
-/* -------------------- Move These... -------------------- */
-
-function fixRanking() {
-    if ($(this).find("select").length === 0) return; // because ranking uses f-rating, so need to differentiate
-    wrapWithFieldset($(this), $(this).find('label').first());
-    //wrapInputsInFieldset(this);
-    $(this).find("div").removeAttr("tabindex").removeAttr("aria-label");
-    $(this).find("select").each(function() {
-        let id = this.id;
-        $(this).removeAttr("aria-label");
-        $(this).next().wrap("<label for='" + id + "'></label>");
-        $(this).next().prepend("<span class='sr-only'>Rank of </span>");
-        // at least in safari it does a weird thing where it selects 1 for each of them...
-        this.value = '';
+function handleSubmit(button) {
+    // check each question for issues and compile a list
+    let errors = [];
+    $('libwizard-question').each(function() {
+        // if grid question, need to treat as multiple
+        if ($(this).attr('data-type') === 'grid') {
+            $(this).find('fieldset').each(function() {
+                let error = checkForError(this);
+                if (error) errors.push(error);
+            });
+        } else {
+            let error = checkForError(this);
+            if (error) errors.push(error);
+        }
     });
+    // if no issues, pass the click event on to the appropriate button and return
+    if (!errors.length) {
+        $('#' + button.getAttribute('data-refersto')).click();
+        // TODO: Remove the alert if it exists from previous errors and any text that has been pulled out
+        return;
+    }
+    // make an alert that includes the list of issues
+    let alert = '<div role="alert" class="error-list f-text-block">';
+    alert += '<div>The following errors were found:</div>';
+    alert += '<ul>';
+    for (let e of errors) {
+        alert += '<li>' + e + '</li>';
+    }
+    alert += '</ul></div>';
+    $('.form-top').first().append(alert);
+    // move focus and scroll to the first question with errors
+    let first = $('.error-label').first().parents('libwizard-question');
+    first.attr('tabindex', '-1');
+    first.focus();
 }
 
 // TODO: Reapply when content changes due to screen size or button press
 // TODO: Ensure that this works for small screens (mostly concerned about grid)
 
-
-// grid functions
-function fixGrid() {
-    let label = $(this).find("label").first();
-    let grid_label_text = label.get(0).innerText; // TODO: Will included required label if present?
-    let ng = getVariableAttribute(label.get(0));
-    let col_header = $(this).find(".f-grid-col").children();
-    let is_radio = !grid_label_text.startsWith("Choose all that apply");
-    fixGridLabel(label, ng);
-    // wrap each question/row in a fieldset
-    if (col_header.length === 0) {
-        // have to do low width completely differently, apparently
-        addFieldsetsToMobileGrid(
-            $(this).find(".f-grid-col").length,
-            $(this).children("div").children("div").first(), // should only be one, but just in case
-            grid_label_text);
-        $(this).find("fieldset").each(function() {
-            let row_id = $(this).find(".f-grid-row").children().first().attr("id").split(" ")[0].replace("-label", "");
-            // inputs
-            $(this).find(".f-grid-row").each(function() {
-                // TODO: Trying removing double id first
-                $(this).children().first().removeAttr("id");
-                let label_text = $(this).children().get(0).innerText;
-                let checkbox = $(this).find("mat-checkbox").get(0);
-                if (is_radio) modifyGridRadioBtn(checkbox, label_text, ng, row_id);
-                else modifyGridCheckbox(checkbox, label_text);
-            });
-        });
-    } else {
-        $(this).find(".f-grid-row").each(function() {
-            let row_id = $(this).children().first().attr("id").replace("-label", "");
-            addFieldsetsToNonMobileGrid(this, grid_label_text);
-            // individual checkboxes and radio buttons
-            $(this).find("mat-checkbox").each(function(index) {
-                let col_label_text = col_header.get(index+1).innerText;
-                if (is_radio) modifyGridRadioBtn(this, col_label_text, ng, row_id);
-                else modifyGridCheckbox(this, col_label_text);
-            });
-        });
-    }
-    // give fieldsets appropriate role
-    if (is_radio) $(this).find("fieldset").attr("role", "radiogroup");
-    // $(this).find(".f-grid-row").each(function() {
-    //     let row_label_text = $(this).children().get(0).innerText;
-    //     let row_id = $(this).children().first().attr("id").replace("-label", "");
-    //     fieldset
-    //     let fieldset = $('<fieldset ' + ng + ' class="row f-grid-row"></fieldset>');
-    //     fieldset.append('<legend class="sr-only">' + grid_label_text + ', ' + row_label_text + '</legend>')
-    //         .append('<div ' + ng + ' ngclass.lt-md="text-24" aria-hidden="true" class="col text-16 choice-text"><span>' + row_label_text + '</span></div>')
-    //         .append($(this).children(":not(:first-child)")); // move over all of the rows
-    //     $(this).replaceWith(fieldset);
-    //     // radio buttons/checkboxes - using loop because I need the index
-    //     let cols = $(fieldset).find("mat-checkbox");
-    //     for (let i = 0; i < cols.length; i++) {
-    //         let col = cols[i];
-    //         let input_label_text = col_header.get(i+1).innerText;
-    //         if (grid_label_text.startsWith("Choose all that apply")) {
-    //             // multiple answers per row - checkboxes
-    //             $(col).removeAttr("aria-labelledby");
-    //             let span = createCheckboxSpan($(col).find("input"), $(col).find("svg"), input_label_text);
-    //             // a few modifications
-    //             span.find(".mat-ripple-element").addClass("mat-checkbox-ripple");
-    //             span.find(".mat-checkbox-label").addClass("sr-only");
-    //             $(col).children("label").children().remove();
-    //             $(col).children("label").append(span.children());
-    //         } else {
-    //             // radio buttons
-    //             let checkbox_input = $(col).find("input").css("display", "none").attr("aria-hidden", "true").attr("aria-label", "ignore this input"); // keep but hide old input
-    //             let checkbox_id = checkbox_input.get(0).id;
-    //             let radio_button = $('<mat-radio-button ' + ng + ' class="mat-radio-button responsive _mat-animation-noopable mat-accent"></mat-radio-button>')
-    //                 .append('<label class="mat-radio-label" for="' + checkbox_id + '-radio"></label>');
-    //             let span = createRadioButtonSpan(
-    //                 $('<input type="radio" id="' + checkbox_id + '-radio" class="mat-radio-outer-circle" name="' + row_id + '" value="' + input_label_text + '" data-refersto="' + checkbox_id + '" aria-checked="false">'),
-    //                 input_label_text);
-    //             // a few modifications (and an event handler)
-    //             span.find(".mat-ripple-element").addClass("mat-radio-ripple");
-    //             span.find(".mat-radio-label-content").addClass("sr-only");
-    //             span.find("input").on("change", function() { handleRadioChange(this); });
-    //             span.append(checkbox_input);
-    //             radio_button.children("label").append(span);
-    //             $(col).replaceWith(radio_button);
-    //             // TODO: Adjust radio button if checkbox was already checked (on reapply)
-    //         }
-    //     }
-    // });
-}
-function fixGridLabel(label, ng) {
-    // build better label: replace label element with span, remove paragraph element from within span
-    label.children().first().replaceWith("<span>" + label.children().get(0).innerText + "</span>"); // would not include required label
-    let new_label = $("<span></span>");
-    new_label.attr("class", label.attr("class")).attr(ng, "").append(label.children());
-    label.replaceWith(new_label);
-}
-function addFieldsetsToMobileGrid(number, container, grid_label_text) {
-    for (let i = 0; i < number; i++) {
-        let label_row = container.children("div").first();
-        let fieldset = $('<fieldset></fieldset>');
-        fieldset.append('<legend class="sr-only">' + grid_label_text + ', ' + label_row.get(0).innerText + '</legend>');
-        fieldset.append(label_row.attr("aria-hidden", "true"));
-        // now for each of the rows
-        while (true) {
-            let row = container.children("div").first();
-            // if there is nothing in row then we are completely finished - that was the last question
-            // if the row has no children than it is the start of the next question, so we are finished with this one
-            if (row.length === 0 || row.children().length === 0) break;
-            // this is just the reorganization - other stuff can come later
-            fieldset.append(row);
-        }
-        container.append(fieldset);
-    }
-}
-function addFieldsetsToNonMobileGrid(row, grid_label_text) {
-    // wrap with fieldset
-    $(row).wrap('<fieldset></fieldset>');
-    // add row id
-    $(row).parent().attr("data-row_id", $(row).children().first().attr("id").replace("-label", ""));
-    // hide "label" from AT
-    $(row).children().first().attr("aria-hidden", "true");
-    // add visually hidden legend
-    $(row).parent().prepend('<legend class="sr-only">' + grid_label_text + ', ' + $(row).children().get(0).innerText + '</legend>');
-}
-function modifyGridCheckbox(checkbox, label_text) {
-    $(checkbox).removeAttr("aria-labelledby");
-    let span = createCheckboxSpan($(checkbox).find("input"), $(checkbox).find("svg"), label_text);
-    // a few modifications
-    span.find(".mat-ripple-element").addClass("mat-checkbox-ripple");
-    span.find(".mat-checkbox-label").addClass("sr-only");
-    $(checkbox).children("label").children().remove();
-    $(checkbox).children("label").append(span.children());
-}
-function modifyGridRadioBtn(checkbox, label_text, ng, row_id) {
-    let old_input = $(checkbox).find("input").css("display", "none").attr("aria-hidden", "true").attr("aria-label", "ignore this field"); // keep (but hide) old checkbox input
-    let checkbox_id = old_input.get(0).id;
-    let radio_button = $('<mat-radio-button ' + ng + ' class="mat-radio-button responsive _mat-animation-noopable mat-accent"></mat-radio-button>')
-        .append('<label class="mat-radio-label" for="' + checkbox_id + '-radio"></label>');
-    let span = createRadioButtonSpan(
-        $('<input type="radio" id="' + checkbox_id + '-radio" class="mat-radio-outer-circle" name="' + row_id + '" value="' + label_text + '" data-refersto="' + checkbox_id + '" aria-checked="false">'),
-        label_text);
-    // a few modifications (and an event handler)
-    span.find(".mat-ripple-element").addClass("mat-radio-ripple");
-    span.find(".mat-radio-label-content").addClass("sr-only");
-    span.find("input").on("change", function() { handleRadioChange(this); });
-    span.append(old_input);
-    radio_button.children("label").append(span);
-    $(checkbox).replaceWith(radio_button);
-    // TODO: Adjust radio button if checkbox was already checked (on reapply)
-}
 
 
 /* -------------------- Date Masking Functions -------------------- */
