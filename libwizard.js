@@ -168,25 +168,46 @@ function fixRadioGroup() {
     fieldset.attr('role', 'radiogroup').addClass('standard');
     
     let group = $(this).find('mat-radio-group');
-    if (group.attr("aria-required")) fieldset.attr("aria-required", "true").attr("required", "");
+    let req = false;
+    if (group.attr("aria-required") === "true") req = true;
     // remove role, aria-labelledby, and required
     group.removeAttr("role").removeAttr("aria-labelledby").removeAttr("aria-required").removeAttr("required");
     // in case of required, remove special input
-    $(this).children('.flex-grow').find('input').remove();
+    if (req) {
+        // add required to fieldset
+        fieldset.attr('aria-required', 'true').attr('required', '');
+        // remove special input
+        $(this).children('.flex-grow').find('input').remove();
+        // add listener
+        fieldset.on('focusout', function() { validateRequiredRadio(this); });
+        // add field for alert
+        fieldset.append('<div class="invalid-feedback" role="alert" style="display: block;"></div>');
+    }
 
     // fix inputs
     $(this).find('mat-radio-button label').each(function() {
         let span = createRadioButtonSpan($(this).find('input'), this.innerText);
         $(this).children().remove();
         $(this).append(span);
+        $(this).find('input').on('input', function() { handleRadiogroupChange(this); });
     });
 }
 // replace group, fieldset, parsing error, VoiceOver 'and one more item'
 function fixCheckboxGroup() {
     let fieldset = wrapWithFieldset($(this), $(this).find('label').first());
     fieldset.addClass('standard');
-    // TODO: Determine if this removes special required input as it does for radio
-    $(this).children('.flex-grow').find('input').remove();
+    // check if required by searching for special required input
+    let req = fieldset.find('input[aria-required=true]').first();
+    if (req.length) {
+        // remove special input
+        req.remove();
+        // add required to fieldset
+        fieldset.attr('aria-required', 'true').attr('required', '');
+        // add listener
+        fieldset.on('focusout', function() { validateRequiredCheckbox(this); });
+        // add field for alert
+        fieldset.append('<div class="invalid-feedback" role="alert" style="display: block;"></div>');
+    }
 
     // fix inputs
     $(this).find('mat-checkbox label').each(function() {
@@ -307,7 +328,11 @@ function handleAlert(input, text, valid) {
         alert.text('');
     }
 }
-
+function handleFieldsetAlert(fieldset, text, valid) {
+    let alert = $(fieldset).find('.invalid-feedback');
+    if (!valid && !alert.text().includes(text)) alert.text(text);
+    else if (valid && alert.text().includes(text)) alert.text('');
+}
 
 /* -------------------- Event handlers -------------------- */
 
@@ -330,6 +355,13 @@ function handleChangeEvent(e) {
     old_input.value = input.value;
     old_input.dispatchEvent(new Event('change'));
 }
+function handleRadiogroupChange(radio) {
+    radio = $(radio);
+    let parent = radio.parents('fieldset');
+    parent.find('input[type=radio]').attr('aria-checked', 'false');
+    radio.attr('aria-checked', 'true');
+    parent.attr('value', radio.val());
+}
 function handleRadioChange(radio) {
     radio = $(radio);
     let parent = radio.parents('.f-grid-row');
@@ -340,6 +372,26 @@ function handleRadioChange(radio) {
 function validateRequired(input) {
     let text = 'This question is required. Please enter a value.';
     handleAlert(input, text, input.value);
+}
+function validateRequiredRadio(fieldset) {
+    // using set timeout because otherwise the whole body element is said to be the active element...
+    setTimeout(function() {
+        // if focus has not left, don't need to validate yet
+        if (fieldset.contains(document.activeElement)) return;
+        // TODO: Is it fine to not have the alert attached, since I don't think aria-describedby applies to fieldsets?
+        let text = 'This question is required. Please select an option.';
+        handleFieldsetAlert(fieldset, text, fieldset.getAttribute('value'));
+    }, 50);
+}
+function validateRequiredCheckbox(fieldset) {
+    // using set timeout because otherwise the whole body element is said to be the active element...
+    setTimeout(function() {
+        // if focus has not left, don't need to validate yet
+        if (fieldset.contains(document.activeElement)) return;
+        // TODO: Is it fine to not have the alert attached, since I don't think aria-describedby applies to fieldsets?
+        let text = 'This question is required. Please select at least one option.';
+        handleFieldsetAlert(fieldset, text, $(fieldset).find('input[aria-checked=true]').length);
+    }, 50);
 }
 function validateDate(input) {
     // moment.js is apparently included, this is good
